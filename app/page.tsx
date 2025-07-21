@@ -1,30 +1,25 @@
-'use client'; // Diretiva obrigatória para usar interatividade no Next.js App Router
+'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation'; // <-- 1. Importe o useRouter
 
 export default function LoginPage() {
-  // Estados para armazenar o que o usuário digita
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-
-  // Estados para feedback ao usuário
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  
+  const router = useRouter(); // <-- 2. Inicie o hook de roteamento
 
-  // Função chamada quando o formulário é enviado
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault(); // Impede que a página recarregue
-    setError(''); // Limpa erros antigos
-    setSuccess(''); // Limpa sucessos antigos
+    event.preventDefault();
+    setError('');
 
-    // Validação simples
     if (!email || !password) {
       setError('Por favor, preencha o email e a senha.');
       return;
     }
 
     try {
-      // Fazendo a chamada para a nossa API de backend!
       const response = await fetch('https://recupera-esprojeto.onrender.com/login', {
         method: 'POST',
         headers: {
@@ -36,26 +31,28 @@ export default function LoginPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        // Se a resposta não for 2xx, consideramos um erro
         throw new Error(data.error || 'Falha no login');
       }
 
-      // Login bem-sucedido!
-      setSuccess('Login realizado com sucesso!');
-      console.log('Token recebido:', data.token); // Mostra o token no console
-      // Aqui, no futuro, salvaremos o token e redirecionaremos o usuário
+      // --- 3. LÓGICA DE SUCESSO ATUALIZADA ---
+      // Salva o token no localStorage do navegador
+      localStorage.setItem('authToken', data.token);
+
+      // Redireciona o usuário para a página de dashboard
+      router.push('/dashboard');
 
     } catch (err: any) {
       setError(err.message);
-      console.error('Erro no login:', err);
     }
   };
 
   return (
+    // O JSX do formulário continua exatamente o mesmo de antes
     <main className="flex min-h-screen flex-col items-center justify-center bg-gray-900 text-white p-8">
       <div className="w-full max-w-md p-8 space-y-6 bg-gray-800 rounded-lg shadow-lg">
         <h1 className="text-3xl font-bold text-center">Login</h1>
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* ... todo o seu formulário aqui ... */}
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-300">
               Email
@@ -96,7 +93,6 @@ export default function LoginPage() {
           </div>
         </form>
         {error && <p className="mt-4 text-center text-red-400">{error}</p>}
-        {success && <p className="mt-4 text-center text-green-400">{success}</p>}
       </div>
     </main>
   );

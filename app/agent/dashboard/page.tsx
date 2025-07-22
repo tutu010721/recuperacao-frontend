@@ -3,25 +3,19 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-// Definimos um tipo para o formato dos nossos leads
+// Atualizamos nosso tipo Lead para incluir o novo campo store_name
+// e para usar o parsed_data que preparamos no backend
 type Lead = {
   id: string;
   store_id: string;
-  raw_data: {
-    customer: {
-      name: string;
-      email: string;
-      phone: string;
-    };
-    transaction?: {
-      value: number;
-      currency: string;
-    };
-    product?: {
-        name: string;
-    }
+  store_name: string; // Novo campo!
+  parsed_data: {
+    customer_name: string;
+    customer_phone: string;
+    total_value: number;
+    currency: string;
   };
-  status: string;
+  status: 'new' | 'contacted' | 'recovered' | 'lost';
   received_at: string;
 };
 
@@ -52,90 +46,102 @@ export default function AgentDashboardPage() {
     const token = localStorage.getItem('authToken');
     if (!token) {
       router.push('/');
-      return;
+    } else {
+      fetchLeads(token);
     }
-    fetchLeads(token);
   }, [router]);
   
-  // --- NOVA FUNÇÃO PARA CONTATAR O LEAD E ATUALIZAR O STATUS ---
-  const handleContact = async (leadId: string, leadPhone: string) => {
+  // Função genérica para atualizar o status de um lead
+  const handleUpdateStatus = async (leadId: string, newStatus: Lead['status']) => {
     const token = localStorage.getItem('authToken');
     if (!token) return;
 
+    const originalLeads = [...leads];
+    
+    // Atualiza o estado localmente primeiro para uma resposta visual instantânea
+    setLeads(currentLeads =>
+      currentLeads.map(lead =>
+        lead.id === leadId ? { ...lead, status: newStatus } : lead
+      )
+    );
+
     try {
-      // 1. Chama a API para atualizar o status
       const response = await fetch(`https://recupera-esprojeto.onrender.com/api/leads/${leadId}/status`, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ status: 'contacted' }),
+        body: JSON.stringify({ status: newStatus }),
       });
 
-      if (!response.ok) throw new Error('Falha ao atualizar status.');
-
-      const updatedLead = await response.json();
-
-      // 2. Atualiza a lista de leads na tela instantaneamente
-      setLeads(currentLeads => 
-        currentLeads.map(lead => 
-          lead.id === leadId ? updatedLead : lead
-        )
-      );
-      
-      // 3. Abre o link do WhatsApp
-      const whatsappUrl = `https://wa.me/${leadPhone}`;
-      window.open(whatsappUrl, '_blank');
-
+      if (!response.ok) {
+        throw new Error('Falha ao atualizar status na API.');
+      }
     } catch (err: any) {
-      alert(`Erro: ${err.message}`); // Mostra um alerta simples em caso de erro
+      alert(`Erro: ${err.message}. Revertendo a alteração.`);
+      setLeads(originalLeads); // Reverte a mudança no estado local em caso de erro
     }
   };
 
-  if (loading) return <div className="flex min-h-screen items-center justify-center bg-gray-900 text-white">Carregando leads...</div>;
-  if (error) return <div className="flex min-h-screen items-center justify-center bg-gray-900 text-red-500">Erro: {error}</div>;
+  if (loading) {
+    return <div className="flex min-h-screen items-center justify-center bg-gray-900 text-white">Carregando leads...</div>;
+  }
+  
+  if (error) {
+    return <div className="flex min-h-screen items-center justify-center bg-gray-900 text-red-500">Erro: {error}</div>;
+  }
 
   return (
     <main className="min-h-screen bg-gray-900 text-white p-8">
       <div className="container mx-auto">
-        <h1 className="text-4xl font-bold mb-8">Painel do Atendente</h1>
-        <div className="space-y-4">
-          {leads.length > 0 ? (
-            leads.map((lead) => (
-              <div key={lead.id} className="bg-gray-800 p-4 rounded-lg shadow-lg flex justify-between items-center">
-                <div className="flex items-center space-x-4">
-                  {/* --- MOSTRADOR DE STATUS --- */}
-                  <span className={`px-2 py-1 text-xs font-bold rounded-full ${
-                    lead.status === 'new' ? 'bg-blue-500' :
-                    lead.status === 'contacted' ? 'bg-yellow-500' :
-                    lead.status === 'recovered' ? 'bg-green-500' : 'bg-red-500'
-                  }`}>
-                    {lead.status}
-                  </span>
-                  <div>
-                    <h2 className="text-xl font-semibold">{lead.raw_data.customer.name}</h2>
-                    <p className="text-gray-400">{lead.raw_data.customer.email}</p>
-                    <p className="text-sm text-gray-500">Recebido em: {new Date(lead.received_at).toLocaleString('pt-BR')}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                    <p className="text-lg font-bold text-green-400">
-                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: lead.raw_data.transaction?.currency || 'BRL' }).format(lead.raw_data.transaction?.value || 0)}
-                    </p>
-                    {/* --- BOTÃO ATUALIZADO --- */}
-                    <button
-                        onClick={() => handleContact(lead.id, lead.raw_data.customer.phone)}
-                        className="mt-2 inline-block bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded transition-colors"
-                    >
-                        Contatar WhatsApp
-                    </button>
-                </div>
-              </div>
-            ))
-          ) : (
-            <p>Nenhum lead para recuperação no momento.</p>
-          )}
+        <h1 className="text-4xl font-bold mb-8">Painel do Atendente - Fila de Recuperação</h1>
+        <div className="bg-gray-800 shadow-lg rounded-lg overflow-x-auto">
+          <table className="min-w-full leading-normal">
+            <thead>
+              <tr>
+                <th className="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">Cliente</th>
+                <th className="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">Loja</th>
+                <th className="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">Status</th>
+                <th className="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-right text-xs font-semibold text-gray-300 uppercase tracking-wider">Valor</th>
+                <th className="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-center text-xs font-semibold text-gray-300 uppercase tracking-wider">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {leads.map((lead) => (
+                <tr key={lead.id} className="hover:bg-gray-700">
+                  <td className="px-5 py-4 border-b border-gray-700 text-sm">
+                    <p className="font-semibold whitespace-no-wrap">{lead.parsed_data.customer_name || 'Não informado'}</p>
+                    <p className="text-gray-400 text-xs whitespace-no-wrap">{new Date(lead.received_at).toLocaleString('pt-BR')}</p>
+                  </td>
+                  <td className="px-5 py-4 border-b border-gray-700 text-sm">
+                    <p className="text-gray-300 whitespace-no-wrap">{lead.store_name}</p>
+                  </td>
+                  <td className="px-5 py-4 border-b border-gray-700 text-sm">
+                    <span className={`px-2 py-1 text-xs font-bold rounded-full whitespace-no-wrap ${
+                      lead.status === 'new' ? 'bg-blue-600 text-blue-100' :
+                      lead.status === 'contacted' ? 'bg-yellow-600 text-yellow-100' :
+                      lead.status === 'recovered' ? 'bg-green-600 text-green-100' : 'bg-red-600 text-red-100'
+                    }`}>
+                      {lead.status.toUpperCase()}
+                    </span>
+                  </td>
+                  <td className="px-5 py-4 border-b border-gray-700 text-sm text-right font-semibold text-green-400">
+                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: lead.parsed_data.currency || 'BRL' }).format(lead.parsed_data.total_value || 0)}
+                  </td>
+                  <td className="px-5 py-4 border-b border-gray-700 text-sm text-center space-x-2">
+                     <a href={`https://wa.me/${lead.parsed_data.customer_phone}`} target="_blank" rel="noopener noreferrer" 
+                        onClick={() => handleUpdateStatus(lead.id, 'contacted')}
+                        className="text-xs bg-gray-600 hover:bg-gray-500 font-bold py-2 px-3 rounded">
+                        Contato
+                     </a>
+                     <button onClick={() => handleUpdateStatus(lead.id, 'recovered')} className="text-xs bg-green-600 hover:bg-green-500 font-bold py-2 px-3 rounded">Recuperado</button>
+                     <button onClick={() => handleUpdateStatus(lead.id, 'lost')} className="text-xs bg-red-600 hover:bg-red-500 font-bold py-2 px-3 rounded">Perdido</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </main>

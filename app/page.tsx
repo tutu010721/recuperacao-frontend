@@ -1,98 +1,130 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation'; // <-- 1. Importe o useRouter
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 
-export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+// Tipos para os dados que vamos buscar
+type UserData = { name: string; email: string; };
+type StoreData = { id: string; name: string; webhookUrl: string; };
+
+export default function DashboardPage() {
+  const router = useRouter();
   
-  const router = useRouter(); // <-- 2. Inicie o hook de roteamento
+  // Estados para armazenar os dados e o estado de carregamento
+  const [user, setUser] = useState<UserData | null>(null);
+  const [stores, setStores] = useState<StoreData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setError('');
-
-    if (!email || !password) {
-      setError('Por favor, preencha o email e a senha.');
+  useEffect(() => {
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+      router.push('/');
       return;
     }
 
-    try {
-      const response = await fetch('https://recupera-esprojeto.onrender.com/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
-      });
+    const fetchData = async () => {
+      try {
+        // Busca os dados do usuário e das lojas em paralelo para ser mais rápido
+        const [userResponse, storesResponse] = await Promise.all([
+          fetch('https://recupera-esprojeto.onrender.com/api/me', {
+            headers: { 'Authorization': `Bearer ${token}` },
+          }),
+          fetch('https://recupera-esprojeto.onrender.com/api/stores', {
+            headers: { 'Authorization': `Bearer ${token}` },
+          }),
+        ]);
 
-      const data = await response.json();
+        if (!userResponse.ok || !storesResponse.ok) {
+          throw new Error('Falha ao buscar dados. Faça o login novamente.');
+        }
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Falha no login');
+        const userData = await userResponse.json();
+        const storesData = await storesResponse.json();
+
+        setUser(userData);
+        setStores(storesData);
+
+      } catch (err: any) {
+        setError(err.message);
+        localStorage.removeItem('authToken');
+        router.push('/');
+      } finally {
+        setLoading(false);
       }
+    };
 
-      // --- 3. LÓGICA DE SUCESSO ATUALIZADA ---
-      // Salva o token no localStorage do navegador
-      localStorage.setItem('authToken', data.token);
-
-      // Redireciona o usuário para a página de dashboard
-      router.push('/dashboard');
-
-    } catch (err: any) {
-      setError(err.message);
-    }
+    fetchData();
+  }, [router]);
+  
+  // Função para copiar a URL para a área de transferência
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    alert('URL do Webhook copiada!'); // Um feedback simples para o usuário
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('authToken');
+    router.push('/');
+  };
+
+  if (loading) {
+    return <div className="flex min-h-screen items-center justify-center bg-gray-900 text-white">Carregando painel...</div>;
+  }
+  
+  if (error) {
+    return <div className="flex min-h-screen items-center justify-center bg-gray-900 text-red-500">Erro: {error}</div>;
+  }
+
   return (
-    // O JSX do formulário continua exatamente o mesmo de antes
-    <main className="flex min-h-screen flex-col items-center justify-center bg-gray-900 text-white p-8">
-      <div className="w-full max-w-md p-8 space-y-6 bg-gray-800 rounded-lg shadow-lg">
-        <h1 className="text-3xl font-bold text-center">Login</h1>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* ... todo o seu formulário aqui ... */}
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-300">
-              Email
-            </label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-            />
-          </div>
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-300">
-              Senha
-            </label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-            />
-          </div>
-          <div>
+    <main className="min-h-screen bg-gray-900 text-white p-8">
+      <div className="container mx-auto">
+        <header className="flex justify-between items-center mb-10">
+          <h1 className="text-3xl font-bold">Painel do Cliente</h1>
+          <div className="text-right">
+            <p className="font-semibold">{user?.name}</p>
+            <p className="text-sm text-gray-400">{user?.email}</p>
             <button
-              type="submit"
-              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              onClick={handleLogout}
+              className="mt-2 text-sm text-red-400 hover:underline"
             >
-              Entrar
+              Sair (Logout)
             </button>
           </div>
-        </form>
-        {error && <p className="mt-4 text-center text-red-400">{error}</p>}
+        </header>
+
+        <section>
+          <h2 className="text-2xl font-semibold mb-4">Minhas Lojas</h2>
+          <div className="space-y-4">
+            {stores.length > 0 ? (
+              stores.map((store) => (
+                <div key={store.id} className="bg-gray-800 p-5 rounded-lg shadow-lg">
+                  <h3 className="text-xl font-bold text-indigo-400">{store.name}</h3>
+                  <p className="mt-2 text-gray-300">URL do Webhook:</p>
+                  <div className="mt-1 flex items-center space-x-2 bg-gray-900 p-2 rounded">
+                    <input 
+                      type="text"
+                      readOnly
+                      value={store.webhookUrl}
+                      className="flex-grow bg-transparent text-gray-400 focus:outline-none"
+                    />
+                    <button
+                      onClick={() => copyToClipboard(store.webhookUrl)}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1 px-3 rounded text-sm"
+                    >
+                      Copiar
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="bg-gray-800 p-5 rounded-lg text-center">
+                <p>Você ainda não cadastrou nenhuma loja.</p>
+                {/* No futuro, aqui teremos um botão para "Adicionar Nova Loja" */}
+              </div>
+            )}
+          </div>
+        </section>
       </div>
     </main>
   );

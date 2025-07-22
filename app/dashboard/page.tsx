@@ -11,13 +11,13 @@ type StoreData = { id: string; name: string; webhookUrl: string; };
 export default function DashboardPage() {
   const router = useRouter();
   
-  // Estados existentes
+  // Estados para dados da página
   const [user, setUser] = useState<UserData | null>(null);
   const [stores, setStores] = useState<StoreData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // --- NOVOS ESTADOS PARA O FORMULÁRIO DE CRIAR LOJA ---
+  // Estados para o formulário de criar nova loja
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newStoreName, setNewStoreName] = useState('');
   const [formError, setFormError] = useState('');
@@ -30,17 +30,26 @@ export default function DashboardPage() {
     }
 
     const fetchData = async () => {
-      // ... (a função fetchData continua a mesma) ...
       try {
         const [userResponse, storesResponse] = await Promise.all([
-          fetch('https://recupera-esprojeto.onrender.com/api/me', { headers: { 'Authorization': `Bearer ${token}` } }),
-          fetch('https://recupera-esprojeto.onrender.com/api/stores', { headers: { 'Authorization': `Bearer ${token}` } }),
+          fetch('https://recupera-esprojeto.onrender.com/api/me', {
+            headers: { 'Authorization': `Bearer ${token}` },
+          }),
+          fetch('https://recupera-esprojeto.onrender.com/api/stores', {
+            headers: { 'Authorization': `Bearer ${token}` },
+          }),
         ]);
-        if (!userResponse.ok || !storesResponse.ok) throw new Error('Falha ao buscar dados.');
+
+        if (!userResponse.ok || !storesResponse.ok) {
+          throw new Error('Falha ao buscar dados. Faça o login novamente.');
+        }
+
         const userData = await userResponse.json();
         const storesData = await storesResponse.json();
+
         setUser(userData);
         setStores(storesData);
+
       } catch (err: any) {
         setError(err.message);
         localStorage.removeItem('authToken');
@@ -49,13 +58,20 @@ export default function DashboardPage() {
         setLoading(false);
       }
     };
+
     fetchData();
   }, [router]);
   
-  const copyToClipboard = (text: string) => { /* ... (continua o mesmo) ... */ };
-  const handleLogout = () => { /* ... (continua o mesmo) ... */ };
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    alert('URL do Webhook copiada!');
+  };
 
-  // --- NOVA FUNÇÃO PARA CRIAR A LOJA ---
+  const handleLogout = () => {
+    localStorage.removeItem('authToken');
+    router.push('/');
+  };
+
   const handleCreateStore = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setFormError('');
@@ -75,10 +91,12 @@ export default function DashboardPage() {
         },
         body: JSON.stringify({ name: newStoreName }),
       });
+      
       const newStore = await response.json();
-      if (!response.ok) throw new Error(newStore.error || 'Falha ao criar loja.');
+      if (!response.ok) {
+        throw new Error(newStore.error || 'Falha ao criar loja.');
+      }
 
-      // Adiciona a nova loja à lista existente e reseta o formulário
       setStores(currentStores => [...currentStores, newStore]);
       setNewStoreName('');
       setShowCreateForm(false);
@@ -86,20 +104,42 @@ export default function DashboardPage() {
       setFormError(err.message);
     }
   };
+
+  if (loading) {
+    return <div className="flex min-h-screen items-center justify-center bg-gray-900 text-white">Carregando painel...</div>;
+  }
   
-  // ... (o resto do código como if(loading), etc, continua o mesmo) ...
+  if (error) {
+    return <div className="flex min-h-screen items-center justify-center bg-gray-900 text-red-500">Erro: {error}</div>;
+  }
 
   return (
     <main className="min-h-screen bg-gray-900 text-white p-8">
       <div className="container mx-auto">
         <header className="flex justify-between items-center mb-10">
-            {/* ... (o header continua o mesmo) ... */}
+          <h1 className="text-3xl font-bold">Painel do Cliente</h1>
+          <div className="text-right">
+            <p className="font-semibold">{user?.name}</p>
+            <p className="text-sm text-gray-400">{user?.email}</p>
+            
+            {user && user.role === 'admin' && (
+              <Link href="/admin/dashboard" className="mt-2 block text-sm text-yellow-400 hover:underline">
+                Acessar Painel do Admin
+              </Link>
+            )}
+
+            <button
+              onClick={handleLogout}
+              className="mt-2 block text-sm text-red-400 hover:underline"
+            >
+              Sair (Logout)
+            </button>
+          </div>
         </header>
 
         <section>
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-2xl font-semibold">Minhas Lojas</h2>
-            {/* Botão para mostrar/esconder o formulário */}
             <button 
               onClick={() => setShowCreateForm(!showCreateForm)}
               className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded"
@@ -108,9 +148,8 @@ export default function DashboardPage() {
             </button>
           </div>
 
-          {/* --- FORMULÁRIO DE CRIAÇÃO (SÓ APARECE QUANDO showCreateForm É TRUE) --- */}
           {showCreateForm && (
-            <div className="bg-gray-800 p-5 rounded-lg mb-4">
+            <div className="bg-gray-800 p-5 rounded-lg mb-4 transition-all duration-300">
               <form onSubmit={handleCreateStore}>
                 <label htmlFor="newStoreName" className="block text-sm font-medium text-gray-300">Nome da Nova Loja</label>
                 <div className="mt-1 flex space-x-2">
@@ -120,9 +159,10 @@ export default function DashboardPage() {
                     value={newStoreName}
                     onChange={(e) => setNewStoreName(e.target.value)}
                     className="flex-grow bg-gray-700 border border-gray-600 rounded-md shadow-sm px-3 py-2 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                    placeholder="Ex: Loja de Calçados Online"
+                    placeholder="Ex: Minha Loja de Sucesso"
+                    autoFocus
                   />
-                  <button type="submit" className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Salvar</button>
+                  <button type="submit" className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Salvar Loja</button>
                 </div>
                 {formError && <p className="mt-2 text-red-400 text-sm">{formError}</p>}
               </form>
@@ -130,7 +170,32 @@ export default function DashboardPage() {
           )}
           
           <div className="space-y-4">
-            {/* ... (o código para listar as lojas continua o mesmo) ... */}
+            {stores.length > 0 ? (
+              stores.map((store) => (
+                <div key={store.id} className="bg-gray-800 p-5 rounded-lg shadow-lg">
+                  <h3 className="text-xl font-bold text-indigo-400">{store.name}</h3>
+                  <p className="mt-2 text-gray-300">URL do Webhook:</p>
+                  <div className="mt-1 flex items-center space-x-2 bg-gray-900 p-2 rounded">
+                    <input 
+                      type="text"
+                      readOnly
+                      value={store.webhookUrl}
+                      className="flex-grow bg-transparent text-gray-400 focus:outline-none"
+                    />
+                    <button
+                      onClick={() => copyToClipboard(store.webhookUrl)}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1 px-3 rounded text-sm"
+                    >
+                      Copiar
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="bg-gray-800 p-5 rounded-lg text-center">
+                <p>Você ainda não cadastrou nenhuma loja.</p>
+              </div>
+            )}
           </div>
         </section>
       </div>

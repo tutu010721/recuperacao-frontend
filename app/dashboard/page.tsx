@@ -3,80 +3,123 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-// Criamos um tipo para os dados do usuário para ajudar com o TypeScript
-type UserData = {
-  name: string;
-  email: string;
-};
+type UserData = { name: string; email: string; };
+type StoreData = { id: string; name: string; webhookUrl: string; };
 
 export default function DashboardPage() {
   const router = useRouter();
-  // Novo estado para guardar os dados do usuário ou erro
-  const [userData, setUserData] = useState<UserData | null>(null);
+  
+  const [user, setUser] = useState<UserData | null>(null);
+  const [stores, setStores] = useState<StoreData[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     const token = localStorage.getItem('authToken');
     if (!token) {
       router.push('/');
-      return; // Para a execução se não houver token
+      return;
     }
 
-    // Função para buscar os dados protegidos
-    const fetchUserData = async () => {
+    const fetchData = async () => {
       try {
-        const response = await fetch('https://recupera-esprojeto.onrender.com/api/me', {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            // É AQUI QUE USAMOS NOSSA CHAVE DE ACESSO!
-            'Authorization': `Bearer ${token}`,
-          },
-        });
+        const [userResponse, storesResponse] = await Promise.all([
+          fetch('https://recupera-esprojeto.onrender.com/api/me', {
+            headers: { 'Authorization': `Bearer ${token}` },
+          }),
+          fetch('https://recupera-esprojeto.onrender.com/api/stores', {
+            headers: { 'Authorization': `Bearer ${token}` },
+          }),
+        ]);
 
-        if (!response.ok) {
-          throw new Error('Falha ao autenticar. Faça o login novamente.');
+        if (!userResponse.ok || !storesResponse.ok) {
+          throw new Error('Falha ao buscar dados. Faça o login novamente.');
         }
 
-        const data: UserData = await response.json();
-        setUserData(data); // Salva os dados do usuário no estado
+        const userData = await userResponse.json();
+        const storesData = await storesResponse.json();
+
+        setUser(userData);
+        setStores(storesData);
 
       } catch (err: any) {
         setError(err.message);
-        // Se houver erro (ex: token expirado), limpa o token e volta pro login
         localStorage.removeItem('authToken');
         router.push('/');
+      } finally {
+        setLoading(false);
       }
     };
 
-    fetchUserData();
+    fetchData();
   }, [router]);
+  
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    alert('URL do Webhook copiada!');
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('authToken');
     router.push('/');
   };
 
-  // Enquanto os dados não chegam, mostramos uma mensagem de carregando
-  if (!userData) {
-    return <div className="flex min-h-screen items-center justify-center bg-gray-900 text-white">Carregando...</div>;
+  if (loading) {
+    return <div className="flex min-h-screen items-center justify-center bg-gray-900 text-white">Carregando painel...</div>;
+  }
+  
+  if (error) {
+    return <div className="flex min-h-screen items-center justify-center bg-gray-900 text-red-500">Erro: {error}</div>;
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-gray-900 text-white p-8">
-      <div className="w-full max-w-4xl text-center">
-        {/* Agora a mensagem é personalizada com o nome do usuário! */}
-        <h1 className="text-5xl font-bold">Bem-vindo, {userData.name}!</h1>
-        <p className="mt-4 text-lg text-gray-400">
-          Este é o seu painel. Seu email registrado é: {userData.email}
-        </p>
-        
-        <button
-          onClick={handleLogout}
-          className="mt-8 py-2 px-6 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-        >
-          Sair (Logout)
-        </button>
+    <main className="min-h-screen bg-gray-900 text-white p-8">
+      <div className="container mx-auto">
+        <header className="flex justify-between items-center mb-10">
+          <h1 className="text-3xl font-bold">Painel do Cliente</h1>
+          <div className="text-right">
+            <p className="font-semibold">{user?.name}</p>
+            <p className="text-sm text-gray-400">{user?.email}</p>
+            <button
+              onClick={handleLogout}
+              className="mt-2 text-sm text-red-400 hover:underline"
+            >
+              Sair (Logout)
+            </button>
+          </div>
+        </header>
+
+        <section>
+          <h2 className="text-2xl font-semibold mb-4">Minhas Lojas</h2>
+          <div className="space-y-4">
+            {stores.length > 0 ? (
+              stores.map((store) => (
+                <div key={store.id} className="bg-gray-800 p-5 rounded-lg shadow-lg">
+                  <h3 className="text-xl font-bold text-indigo-400">{store.name}</h3>
+                  <p className="mt-2 text-gray-300">URL do Webhook:</p>
+                  <div className="mt-1 flex items-center space-x-2 bg-gray-900 p-2 rounded">
+                    <input 
+                      type="text"
+                      readOnly
+                      value={store.webhookUrl}
+                      className="flex-grow bg-transparent text-gray-400 focus:outline-none"
+                    />
+                    <button
+                      onClick={() => copyToClipboard(store.webhookUrl)}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1 px-3 rounded text-sm"
+                    >
+                      Copiar
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="bg-gray-800 p-5 rounded-lg text-center">
+                <p>Você ainda não cadastrou nenhuma loja.</p>
+              </div>
+            )}
+          </div>
+        </section>
       </div>
     </main>
   );

@@ -2,9 +2,19 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link'; // Importa o componente de Link
 
-type UserData = { name: string; email: string; };
-type StoreData = { id: string; name: string; webhookUrl: string; };
+// Tipos para os dados que vamos buscar
+type UserData = {
+  name: string;
+  email: string;
+  role: string; // Adicionamos a 'role' para saber se o usuário é admin
+};
+type StoreData = {
+  id: string;
+  name: string;
+  webhookUrl: string;
+};
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -23,6 +33,7 @@ export default function DashboardPage() {
 
     const fetchData = async () => {
       try {
+        // Busca os dados do usuário e das lojas em paralelo para ser mais rápido
         const [userResponse, storesResponse] = await Promise.all([
           fetch('https://recupera-esprojeto.onrender.com/api/me', {
             headers: { 'Authorization': `Bearer ${token}` },
@@ -80,9 +91,17 @@ export default function DashboardPage() {
           <div className="text-right">
             <p className="font-semibold">{user?.name}</p>
             <p className="text-sm text-gray-400">{user?.email}</p>
+            
+            {/* Link para o Painel do Admin, só aparece se o usuário for 'admin' */}
+            {user && user.role === 'admin' && (
+              <Link href="/admin/dashboard" className="mt-2 block text-sm text-yellow-400 hover:underline">
+                Acessar Painel do Admin
+              </Link>
+            )}
+
             <button
               onClick={handleLogout}
-              className="mt-2 text-sm text-red-400 hover:underline"
+              className="mt-2 block text-sm text-red-400 hover:underline"
             >
               Sair (Logout)
             </button>
@@ -116,6 +135,7 @@ export default function DashboardPage() {
             ) : (
               <div className="bg-gray-800 p-5 rounded-lg text-center">
                 <p>Você ainda não cadastrou nenhuma loja.</p>
+                {/* No futuro, aqui teremos um botão para "Adicionar Nova Loja" */}
               </div>
             )}
           </div>

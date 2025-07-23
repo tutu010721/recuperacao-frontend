@@ -24,7 +24,12 @@ type Store = {
   name: string;
 };
 
-const FilterButton = ({ filter, activeFilter, setFilter, children }: any) => (
+const FilterButton = ({ filter, activeFilter, setFilter, children }: {
+  filter: LeadStatus | 'all',
+  activeFilter: LeadStatus | 'all',
+  setFilter: React.Dispatch<React.SetStateAction<LeadStatus | 'all'>>,
+  children: React.ReactNode
+}) => (
   <button
     onClick={() => setFilter(filter)}
     className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
@@ -73,7 +78,7 @@ export default function AgentDashboardPage() {
       const params = new URLSearchParams();
       if (statusFilter !== 'all') params.append('status', statusFilter);
       if (storeFilter !== 'all') params.append('storeId', storeFilter);
-
+      
       const url = `https://recupera-esprojeto.onrender.com/api/leads?${params.toString()}`;
 
       const response = await fetch(url, {
@@ -104,7 +109,7 @@ export default function AgentDashboardPage() {
       fetchLeads(token);
     }
   }, [fetchLeads]);
-
+  
   const handleUpdateStatus = async (leadId: string, newStatus: LeadStatus) => {
     const token = localStorage.getItem('authToken');
     if (!token) return;

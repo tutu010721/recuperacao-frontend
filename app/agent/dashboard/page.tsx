@@ -73,7 +73,7 @@ export default function AgentDashboardPage() {
       const params = new URLSearchParams();
       if (statusFilter !== 'all') params.append('status', statusFilter);
       if (storeFilter !== 'all') params.append('storeId', storeFilter);
-      
+
       const url = `https://recupera-esprojeto.onrender.com/api/leads?${params.toString()}`;
 
       const response = await fetch(url, {
@@ -104,7 +104,7 @@ export default function AgentDashboardPage() {
       fetchLeads(token);
     }
   }, [fetchLeads]);
-  
+
   const handleUpdateStatus = async (leadId: string, newStatus: LeadStatus) => {
     const token = localStorage.getItem('authToken');
     if (!token) return;
@@ -215,7 +215,6 @@ export default function AgentDashboardPage() {
                     <td className="px-5 py-4 border-b border-gray-700 text-sm text-right font-semibold text-green-400">
                       {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: lead.parsed_data?.currency || 'BRL' }).format(lead.parsed_data?.total_value || 0)}
                     </td>
-                    {/* --- A CÉLULA QUE FALTAVA ESTÁ AQUI --- */}
                     <td className="px-5 py-4 border-b border-gray-700 text-sm text-center">
                         <div className="flex justify-center items-center space-x-2">
                             <button onClick={() => handleCopyMessage(lead, 'msg1')} className={`text-xs font-bold py-1 px-2 rounded transition-colors ${copiedStates[`${lead.id}-msg1`] ? 'bg-green-500 text-white' : 'bg-white text-gray-800 hover:bg-gray-200'}`}>Msg 1</button>

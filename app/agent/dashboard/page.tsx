@@ -24,6 +24,15 @@ type Store = {
   name: string;
 };
 
+type Metrics = {
+    awaitingContact: number;
+    inRecovery: number;
+    recoveredCount: number;
+    recoveredValue: number;
+    pendingValue: number;
+};
+
+// Componentes
 const FilterButton = ({ filter, activeFilter, setFilter, children }: {
   filter: LeadStatus | 'all',
   activeFilter: LeadStatus | 'all',
@@ -42,51 +51,60 @@ const FilterButton = ({ filter, activeFilter, setFilter, children }: {
   </button>
 );
 
-// Mensagens pré-definidas para recuperação
+const MetricCard = ({ title, value, formatAsCurrency = false }: { title: string, value: number, formatAsCurrency?: boolean}) => (
+    <div className="bg-gray-800 p-4 rounded-lg shadow-lg text-center">
+        <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider">{title}</h3>
+        <p className="mt-1 text-3xl font-semibold text-white">
+            {formatAsCurrency ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value) : value}
+        </p>
+    </div>
+);
+
 const recoveryMessages = {
   msg1: (name: string) => `Olá ${name}, tudo bem? Vi que você tentou fazer uma compra conosco mas não conseguiu finalizar. Posso te ajudar em algo?`,
   msg2: (name: string) => `Oi ${name}! Só passando para te lembrar da sua compra. Se precisar de ajuda com o pagamento ou tiver alguma dúvida, é só me chamar aqui!`,
   msg3: (name: string) => `E aí, ${name}! Última chance para garantir seu produto. Se finalizar agora, consigo um cupom de desconto especial para você. Vamos fechar?`
 };
 
+
 export default function AgentDashboardPage() {
   const router = useRouter();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [availableStores, setAvailableStores] = useState<Store[]>([]);
+  const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [statusFilter, setStatusFilter] = useState<LeadStatus | 'all'>('all');
   const [storeFilter, setStoreFilter] = useState('all');
   const [copiedStates, setCopiedStates] = useState<{ [key: string]: string | null }>({});
 
-  const fetchInitialData = useCallback(async (token: string) => {
-    try {
-      const storesResponse = await fetch('https://recupera-esprojeto.onrender.com/api/agent/stores', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (!storesResponse.ok) throw new Error('Falha ao buscar lojas do atendente.');
-      const storesData = await storesResponse.json();
-      setAvailableStores(storesData);
-    } catch (err: any) {
-      setError(err.message);
-    }
-  }, []);
-
-  const fetchLeads = useCallback(async (token: string) => {
+  const fetchDashboardData = useCallback(async (token: string) => {
     try {
       setLoading(true);
+      
       const params = new URLSearchParams();
       if (statusFilter !== 'all') params.append('status', statusFilter);
       if (storeFilter !== 'all') params.append('storeId', storeFilter);
-      
-      const url = `https://recupera-esprojeto.onrender.com/api/leads?${params.toString()}`;
+      const leadsUrl = `https://recupera-esprojeto.onrender.com/api/leads?${params.toString()}`;
 
-      const response = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (!response.ok) throw new Error('Falha ao buscar leads.');
-      const data: Lead[] = await response.json();
-      setLeads(data);
+      const [storesResponse, metricsResponse, leadsResponse] = await Promise.all([
+        fetch('https://recupera-esprojeto.onrender.com/api/agent/stores', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch('https://recupera-esprojeto.onrender.com/api/agent/metrics', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(leadsUrl, { headers: { 'Authorization': `Bearer ${token}` } })
+      ]);
+
+      if (!storesResponse.ok || !metricsResponse.ok || !leadsResponse.ok) {
+        throw new Error('Falha ao buscar dados. Faça o login novamente.');
+      }
+
+      const storesData = await storesResponse.json();
+      const metricsData = await metricsResponse.json();
+      const leadsData = await leadsResponse.json();
+
+      setAvailableStores(storesData);
+      setMetrics(metricsData);
+      setLeads(leadsData);
+
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -94,31 +112,28 @@ export default function AgentDashboardPage() {
     }
   }, [statusFilter, storeFilter]);
 
+
   useEffect(() => {
     const token = localStorage.getItem('authToken');
     if (!token) {
       router.push('/');
     } else {
-      fetchInitialData(token);
+      fetchDashboardData(token);
     }
-  }, [router, fetchInitialData]);
-
-  useEffect(() => {
-    const token = localStorage.getItem('authToken');
-    if (token) {
-      fetchLeads(token);
-    }
-  }, [fetchLeads]);
+  }, [router, fetchDashboardData]);
+  
   
   const handleUpdateStatus = async (leadId: string, newStatus: LeadStatus) => {
     const token = localStorage.getItem('authToken');
     if (!token) return;
+    
     const originalLeads = [...leads];
     setLeads(currentLeads =>
       currentLeads.map(lead =>
         lead.id === leadId ? { ...lead, status: newStatus } : lead
       )
     );
+
     try {
       const response = await fetch(`https://recupera-esprojeto.onrender.com/api/leads/${leadId}/status`, {
         method: 'PATCH',
@@ -128,9 +143,12 @@ export default function AgentDashboardPage() {
         },
         body: JSON.stringify({ status: newStatus }),
       });
+
       if (!response.ok) {
         throw new Error('Falha ao atualizar status na API.');
       }
+      // Após sucesso, atualiza tudo para refletir as novas métricas e a lista filtrada
+      fetchDashboardData(token);
     } catch (err: any) {
       alert(`Erro: ${err.message}. Revertendo a alteração.`);
       setLeads(originalLeads);
@@ -147,6 +165,10 @@ export default function AgentDashboardPage() {
     }, 2000);
   };
 
+  if (loading && !metrics) {
+    return <div className="flex min-h-screen items-center justify-center bg-gray-900 text-white">Carregando painel...</div>;
+  }
+  
   if (error) {
     return <div className="flex min-h-screen items-center justify-center bg-gray-900 text-red-500">Erro: {error}</div>;
   }
@@ -154,8 +176,17 @@ export default function AgentDashboardPage() {
   return (
     <main className="min-h-screen bg-gray-900 text-white p-8">
       <div className="container mx-auto">
-        <h1 className="text-4xl font-bold mb-4">Painel do Atendente</h1>
-        <p className="text-gray-400 mb-8">Fila de Recuperação</p>
+        <h1 className="text-4xl font-bold mb-8">Painel do Atendente</h1>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
+            <MetricCard title="Aguardando Contato" value={metrics?.awaitingContact ?? 0} />
+            <MetricCard title="Em Recuperação" value={metrics?.inRecovery ?? 0} />
+            <MetricCard title="Vendas Recuperadas" value={metrics?.recoveredCount ?? 0} />
+            <MetricCard title="Valor Recuperado" value={metrics?.recoveredValue ?? 0} formatAsCurrency={true} />
+            <MetricCard title="Valor Pendente" value={metrics?.pendingValue ?? 0} formatAsCurrency={true} />
+        </div>
+
+        <h2 className="text-2xl font-semibold mb-4">Fila de Recuperação</h2>
 
         <div className="flex flex-wrap gap-4 items-center mb-8">
           <div>
@@ -199,7 +230,9 @@ export default function AgentDashboardPage() {
               ) : leads.length === 0 ? (
                 <tr><td colSpan={6} className="text-center py-10 text-gray-500">Nenhum lead encontrado para este filtro.</td></tr>
               ) : (
-                leads.map((lead) => (
+                leads.map((lead) => {
+                  const isClosed = lead.status === 'recovered' || lead.status === 'lost';
+                  return (
                   <tr key={lead.id} className="hover:bg-gray-700">
                     <td className="px-5 py-4 border-b border-gray-700 text-sm">
                       <p className="font-semibold whitespace-no-wrap">{lead.parsed_data?.customer_name || 'Dado não processado'}</p>
@@ -222,22 +255,23 @@ export default function AgentDashboardPage() {
                     </td>
                     <td className="px-5 py-4 border-b border-gray-700 text-sm text-center">
                         <div className="flex justify-center items-center space-x-2">
-                            <button onClick={() => handleCopyMessage(lead, 'msg1')} className={`text-xs font-bold py-1 px-2 rounded transition-colors ${copiedStates[`${lead.id}-msg1`] ? 'bg-green-500 text-white' : 'bg-white text-gray-800 hover:bg-gray-200'}`}>Msg 1</button>
-                            <button onClick={() => handleCopyMessage(lead, 'msg2')} className={`text-xs font-bold py-1 px-2 rounded transition-colors ${copiedStates[`${lead.id}-msg2`] ? 'bg-green-500 text-white' : 'bg-white text-gray-800 hover:bg-gray-200'}`}>Msg 2</button>
-                            <button onClick={() => handleCopyMessage(lead, 'msg3')} className={`text-xs font-bold py-1 px-2 rounded transition-colors ${copiedStates[`${lead.id}-msg3`] ? 'bg-green-500 text-white' : 'bg-white text-gray-800 hover:bg-gray-200'}`}>Msg 3</button>
+                            <button onClick={() => handleCopyMessage(lead, 'msg1')} disabled={isClosed} className={`text-xs font-bold py-1 px-2 rounded transition-colors ${copiedStates[`${lead.id}-msg1`] ? 'bg-green-500 text-white' : 'bg-white text-gray-800 hover:bg-gray-200'} ${isClosed ? 'opacity-50 cursor-not-allowed' : ''}`}>Msg 1</button>
+                            <button onClick={() => handleCopyMessage(lead, 'msg2')} disabled={isClosed} className={`text-xs font-bold py-1 px-2 rounded transition-colors ${copiedStates[`${lead.id}-msg2`] ? 'bg-green-500 text-white' : 'bg-white text-gray-800 hover:bg-gray-200'} ${isClosed ? 'opacity-50 cursor-not-allowed' : ''}`}>Msg 2</button>
+                            <button onClick={() => handleCopyMessage(lead, 'msg3')} disabled={isClosed} className={`text-xs font-bold py-1 px-2 rounded transition-colors ${copiedStates[`${lead.id}-msg3`] ? 'bg-green-500 text-white' : 'bg-white text-gray-800 hover:bg-gray-200'} ${isClosed ? 'opacity-50 cursor-not-allowed' : ''}`}>Msg 3</button>
                         </div>
                     </td>
                     <td className="px-5 py-4 border-b border-gray-700 text-sm text-center space-x-2">
                        <a href={`https://wa.me/${lead.parsed_data?.customer_phone || ''}`} target="_blank" rel="noopener noreferrer" 
-                          onClick={() => handleUpdateStatus(lead.id, 'contacted')}
-                          className="text-xs bg-gray-600 hover:bg-gray-500 font-bold py-2 px-3 rounded">
+                          onClick={(e) => { if(isClosed) e.preventDefault(); else handleUpdateStatus(lead.id, 'contacted'); }}
+                          className={`inline-block text-xs font-bold py-2 px-3 rounded ${isClosed ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gray-600 hover:bg-gray-500'}`}>
                           Contato
                        </a>
-                       <button onClick={() => handleUpdateStatus(lead.id, 'recovered')} className="text-xs bg-green-600 hover:bg-green-500 font-bold py-2 px-3 rounded">Recuperado</button>
-                       <button onClick={() => handleUpdateStatus(lead.id, 'lost')} className="text-xs bg-red-600 hover:bg-red-500 font-bold py-2 px-3 rounded">Perdido</button>
+                       <button onClick={() => handleUpdateStatus(lead.id, 'recovered')} disabled={isClosed} className={`text-xs font-bold py-2 px-3 rounded ${isClosed ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-green-600 hover:bg-green-500'}`}>Recuperado</button>
+                       <button onClick={() => handleUpdateStatus(lead.id, 'lost')} disabled={isClosed} className={`text-xs font-bold py-2 px-3 rounded ${isClosed ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-red-600 hover:bg-red-500'}`}>Perdido</button>
                     </td>
                   </tr>
-                ))
+                );
+                })
               )}
             </tbody>
           </table>

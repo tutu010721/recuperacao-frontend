@@ -26,7 +26,7 @@ export default function SignupPage() {
       const signupResponse = await fetch('https://recupera-esprojeto.onrender.com/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password, role: 'seller' }),
+        body: JSON.stringify({ name, email, password, role: 'seller' }), // Role 'seller' é fixa
       });
 
       const signupData = await signupResponse.json();

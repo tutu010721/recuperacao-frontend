@@ -24,7 +24,6 @@ type Store = {
   name: string;
 };
 
-// Componente para os botões de filtro com a TIPAGEM CORRIGIDA
 const FilterButton = ({ filter, activeFilter, setFilter, children }: {
   filter: LeadStatus | 'all',
   activeFilter: LeadStatus | 'all',
@@ -43,6 +42,12 @@ const FilterButton = ({ filter, activeFilter, setFilter, children }: {
   </button>
 );
 
+// Mensagens pré-definidas para recuperação
+const recoveryMessages = {
+  msg1: (name: string) => `Olá ${name}, tudo bem? Vi que você tentou fazer uma compra conosco mas não conseguiu finalizar. Posso te ajudar em algo?`,
+  msg2: (name: string) => `Oi ${name}! Só passando para te lembrar da sua compra. Se precisar de ajuda com o pagamento ou tiver alguma dúvida, é só me chamar aqui!`,
+  msg3: (name: string) => `E aí, ${name}! Última chance para garantir seu produto. Se finalizar agora, consigo um cupom de desconto especial para você. Vamos fechar?`
+};
 
 export default function AgentDashboardPage() {
   const router = useRouter();
@@ -50,9 +55,9 @@ export default function AgentDashboardPage() {
   const [availableStores, setAvailableStores] = useState<Store[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  
   const [statusFilter, setStatusFilter] = useState<LeadStatus | 'all'>('all');
   const [storeFilter, setStoreFilter] = useState('all');
+  const [copiedStates, setCopiedStates] = useState<{ [key: string]: string | null }>({});
 
   const fetchInitialData = useCallback(async (token: string) => {
     try {
@@ -132,6 +137,16 @@ export default function AgentDashboardPage() {
     }
   };
 
+  const handleCopyMessage = (lead: Lead, messageKey: 'msg1' | 'msg2' | 'msg3') => {
+    const customerName = lead.parsed_data?.customer_name || 'cliente';
+    const message = recoveryMessages[messageKey](customerName.split(' ')[0]);
+    navigator.clipboard.writeText(message);
+    setCopiedStates(prev => ({ ...prev, [`${lead.id}-${messageKey}`]: 'copied' }));
+    setTimeout(() => {
+      setCopiedStates(prev => ({ ...prev, [`${lead.id}-${messageKey}`]: null }));
+    }, 2000);
+  };
+
   if (error) {
     return <div className="flex min-h-screen items-center justify-center bg-gray-900 text-red-500">Erro: {error}</div>;
   }
@@ -174,14 +189,15 @@ export default function AgentDashboardPage() {
                 <th className="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">Loja</th>
                 <th className="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">Status</th>
                 <th className="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-right text-xs font-semibold text-gray-300 uppercase tracking-wider">Valor</th>
+                <th className="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-center text-xs font-semibold text-gray-300 uppercase tracking-wider">Mensagens</th>
                 <th className="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-center text-xs font-semibold text-gray-300 uppercase tracking-wider">Ações</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={5} className="text-center py-10 text-gray-500">Carregando...</td></tr>
+                <tr><td colSpan={6} className="text-center py-10 text-gray-500">Carregando...</td></tr>
               ) : leads.length === 0 ? (
-                <tr><td colSpan={5} className="text-center py-10 text-gray-500">Nenhum lead encontrado para este filtro.</td></tr>
+                <tr><td colSpan={6} className="text-center py-10 text-gray-500">Nenhum lead encontrado para este filtro.</td></tr>
               ) : (
                 leads.map((lead) => (
                   <tr key={lead.id} className="hover:bg-gray-700">
@@ -203,6 +219,13 @@ export default function AgentDashboardPage() {
                     </td>
                     <td className="px-5 py-4 border-b border-gray-700 text-sm text-right font-semibold text-green-400">
                       {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: lead.parsed_data?.currency || 'BRL' }).format(lead.parsed_data?.total_value || 0)}
+                    </td>
+                    <td className="px-5 py-4 border-b border-gray-700 text-sm text-center">
+                        <div className="flex justify-center items-center space-x-2">
+                            <button onClick={() => handleCopyMessage(lead, 'msg1')} className={`text-xs font-bold py-1 px-2 rounded transition-colors ${copiedStates[`${lead.id}-msg1`] ? 'bg-green-500 text-white' : 'bg-white text-gray-800 hover:bg-gray-200'}`}>Msg 1</button>
+                            <button onClick={() => handleCopyMessage(lead, 'msg2')} className={`text-xs font-bold py-1 px-2 rounded transition-colors ${copiedStates[`${lead.id}-msg2`] ? 'bg-green-500 text-white' : 'bg-white text-gray-800 hover:bg-gray-200'}`}>Msg 2</button>
+                            <button onClick={() => handleCopyMessage(lead, 'msg3')} className={`text-xs font-bold py-1 px-2 rounded transition-colors ${copiedStates[`${lead.id}-msg3`] ? 'bg-green-500 text-white' : 'bg-white text-gray-800 hover:bg-gray-200'}`}>Msg 3</button>
+                        </div>
                     </td>
                     <td className="px-5 py-4 border-b border-gray-700 text-sm text-center space-x-2">
                        <a href={`https://wa.me/${lead.parsed_data?.customer_phone || ''}`} target="_blank" rel="noopener noreferrer" 

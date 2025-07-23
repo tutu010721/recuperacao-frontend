@@ -78,13 +78,13 @@ export default function AgentDashboardPage() {
   const [storeFilter, setStoreFilter] = useState('all');
   const [copiedStates, setCopiedStates] = useState<{ [key: string]: string | null }>({});
 
-  const fetchDashboardData = useCallback(async (token: string) => {
+  const fetchDashboardData = useCallback(async (token: string, currentStatusFilter: string, currentStoreFilter: string) => {
     try {
       setLoading(true);
       
       const params = new URLSearchParams();
-      if (statusFilter !== 'all') params.append('status', statusFilter);
-      if (storeFilter !== 'all') params.append('storeId', storeFilter);
+      if (currentStatusFilter !== 'all') params.append('status', currentStatusFilter);
+      if (currentStoreFilter !== 'all') params.append('storeId', currentStoreFilter);
       const leadsUrl = `https://recupera-esprojeto.onrender.com/api/leads?${params.toString()}`;
 
       const [storesResponse, metricsResponse, leadsResponse] = await Promise.all([
@@ -110,7 +110,7 @@ export default function AgentDashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, storeFilter]);
+  }, []);
 
 
   useEffect(() => {
@@ -118,16 +118,16 @@ export default function AgentDashboardPage() {
     if (!token) {
       router.push('/');
     } else {
-      fetchDashboardData(token);
+      fetchDashboardData(token, statusFilter, storeFilter);
     }
-  }, [router, fetchDashboardData]);
+  }, [router, fetchDashboardData, statusFilter, storeFilter]);
   
   
   const handleUpdateStatus = async (leadId: string, newStatus: LeadStatus) => {
     const token = localStorage.getItem('authToken');
     if (!token) return;
     
-    // Atualiza a UI otimisticamente para resposta instantânea
+    const originalLeads = [...leads];
     setLeads(currentLeads =>
       currentLeads.map(lead =>
         lead.id === leadId ? { ...lead, status: newStatus } : lead
@@ -147,11 +147,11 @@ export default function AgentDashboardPage() {
       if (!response.ok) {
         throw new Error('Falha ao atualizar status na API.');
       }
-      // Após sucesso, busca todos os dados novamente para garantir consistência
-      fetchDashboardData(token);
+      // Após sucesso, atualiza tudo para refletir as novas métricas e a lista filtrada
+      fetchDashboardData(token, statusFilter, storeFilter);
     } catch (err: any) {
-      alert(`Erro: ${err.message}. Atualizando a lista...`);
-      fetchDashboardData(token); // Atualiza a lista mesmo em caso de erro para re-sincronizar
+      alert(`Erro: ${err.message}. Revertendo a alteração.`);
+      setLeads(originalLeads);
     }
   };
 

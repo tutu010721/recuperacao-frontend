@@ -3,9 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
-// Tipos de dados
 type LeadStatus = 'new' | 'contacted' | 'recovered' | 'lost';
-
 type Lead = {
   id: string;
   store_name: string;
@@ -18,18 +16,11 @@ type Lead = {
   status: LeadStatus;
   received_at: string;
 };
-
 type Store = {
   id: string;
   name: string;
 };
-
-const FilterButton = ({ filter, activeFilter, setFilter, children }: {
-  filter: LeadStatus | 'all',
-  activeFilter: LeadStatus | 'all',
-  setFilter: React.Dispatch<React.SetStateAction<LeadStatus | 'all'>>,
-  children: React.ReactNode
-}) => (
+const FilterButton = ({ filter, activeFilter, setFilter, children }: any) => (
   <button
     onClick={() => setFilter(filter)}
     className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
@@ -41,8 +32,6 @@ const FilterButton = ({ filter, activeFilter, setFilter, children }: {
     {children}
   </button>
 );
-
-// Mensagens pré-definidas para recuperação
 const recoveryMessages = {
   msg1: (name: string) => `Olá ${name}, tudo bem? Vi que você tentou fazer uma compra conosco mas não conseguiu finalizar. Posso te ajudar em algo?`,
   msg2: (name: string) => `Oi ${name}! Só passando para te lembrar da sua compra. Se precisar de ajuda com o pagamento ou tiver alguma dúvida, é só me chamar aqui!`,
@@ -189,6 +178,7 @@ export default function AgentDashboardPage() {
                 <th className="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">Loja</th>
                 <th className="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">Status</th>
                 <th className="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-right text-xs font-semibold text-gray-300 uppercase tracking-wider">Valor</th>
+                {/* --- A CORREÇÃO ESTÁ AQUI: ADICIONAMOS O CABEÇALHO DA NOVA COLUNA --- */}
                 <th className="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-center text-xs font-semibold text-gray-300 uppercase tracking-wider">Mensagens</th>
                 <th className="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-center text-xs font-semibold text-gray-300 uppercase tracking-wider">Ações</th>
               </tr>
@@ -220,6 +210,7 @@ export default function AgentDashboardPage() {
                     <td className="px-5 py-4 border-b border-gray-700 text-sm text-right font-semibold text-green-400">
                       {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: lead.parsed_data?.currency || 'BRL' }).format(lead.parsed_data?.total_value || 0)}
                     </td>
+                    {/* --- A CORREÇÃO ESTÁ AQUI: ADICIONAMOS A CÉLULA DA NOVA COLUNA --- */}
                     <td className="px-5 py-4 border-b border-gray-700 text-sm text-center">
                         <div className="flex justify-center items-center space-x-2">
                             <button onClick={() => handleCopyMessage(lead, 'msg1')} className={`text-xs font-bold py-1 px-2 rounded transition-colors ${copiedStates[`${lead.id}-msg1`] ? 'bg-green-500 text-white' : 'bg-white text-gray-800 hover:bg-gray-200'}`}>Msg 1</button>

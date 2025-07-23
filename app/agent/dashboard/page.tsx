@@ -24,7 +24,15 @@ type Store = {
   name: string;
 };
 
-// Componente para os botões de filtro
+type Metrics = {
+    awaitingContact: number;
+    inRecovery: number;
+    recoveredCount: number;
+    recoveredValue: number;
+    pendingValue: number;
+}
+
+// Componentes
 const FilterButton = ({ filter, activeFilter, setFilter, children }: {
   filter: LeadStatus | 'all',
   activeFilter: LeadStatus | 'all',
@@ -43,83 +51,85 @@ const FilterButton = ({ filter, activeFilter, setFilter, children }: {
   </button>
 );
 
-// Mensagens pré-definidas para recuperação
+const MetricCard = ({ title, value, formatAsCurrency = false }: { title: string, value: number, formatAsCurrency?: boolean}) => (
+    <div className="bg-gray-800 p-4 rounded-lg shadow-lg text-center">
+        <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider">{title}</h3>
+        <p className="mt-1 text-3xl font-semibold text-white">
+            {formatAsCurrency ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value) : value}
+        </p>
+    </div>
+);
+
 const recoveryMessages = {
   msg1: (name: string) => `Olá ${name}, tudo bem? Vi que você tentou fazer uma compra conosco mas não conseguiu finalizar. Posso te ajudar em algo?`,
   msg2: (name: string) => `Oi ${name}! Só passando para te lembrar da sua compra. Se precisar de ajuda com o pagamento ou tiver alguma dúvida, é só me chamar aqui!`,
   msg3: (name: string) => `E aí, ${name}! Última chance para garantir seu produto. Se finalizar agora, consigo um cupom de desconto especial para você. Vamos fechar?`
 };
 
+
 export default function AgentDashboardPage() {
   const router = useRouter();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [availableStores, setAvailableStores] = useState<Store[]>([]);
+  const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [statusFilter, setStatusFilter] = useState<LeadStatus | 'all'>('all');
   const [storeFilter, setStoreFilter] = useState('all');
   const [copiedStates, setCopiedStates] = useState<{ [key: string]: string | null }>({});
 
-  const fetchInitialData = useCallback(async (token: string) => {
-    try {
-      const storesResponse = await fetch('https://recupera-esprojeto.onrender.com/api/agent/stores', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (!storesResponse.ok) throw new Error('Falha ao buscar lojas do atendente.');
-      const storesData = await storesResponse.json();
-      setAvailableStores(storesData);
-    } catch (err: any) {
-      setError(err.message);
-    }
-  }, []);
-
-  const fetchLeads = useCallback(async (token: string) => {
+  const fetchDashboardData = useCallback(async (token: string) => {
     try {
       setLoading(true);
-      const params = new URLSearchParams();
-      if (statusFilter !== 'all') params.append('status', statusFilter);
-      if (storeFilter !== 'all') params.append('storeId', storeFilter);
-      
-      const url = `https://recupera-esprojeto.onrender.com/api/leads?${params.toString()}`;
+      const [storesResponse, metricsResponse, leadsResponse] = await Promise.all([
+        fetch('https://recupera-esprojeto.onrender.com/api/agent/stores', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch('https://recupera-esprojeto.onrender.com/api/agent/metrics', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`https://recupera-esprojeto.onrender.com/api/leads?status=${statusFilter}&storeId=${storeFilter}`, { headers: { 'Authorization': `Bearer ${token}` } })
+      ]);
 
-      const response = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (!response.ok) throw new Error('Falha ao buscar leads.');
-      const data: Lead[] = await response.json();
-      setLeads(data);
+      if (!storesResponse.ok || !metricsResponse.ok || !leadsResponse.ok) {
+        throw new Error('Falha ao buscar dados. Faça o login novamente.');
+      }
+
+      const storesData = await storesResponse.json();
+      const metricsData = await metricsResponse.json();
+      const leadsData = await leadsResponse.json();
+
+      setAvailableStores(storesData);
+      setMetrics(metricsData);
+      setLeads(leadsData);
+
     } catch (err: any) {
       setError(err.message);
+      localStorage.removeItem('authToken');
+      router.push('/');
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, storeFilter]);
+  }, [statusFilter, storeFilter, router]);
+
 
   useEffect(() => {
     const token = localStorage.getItem('authToken');
     if (!token) {
       router.push('/');
     } else {
-      fetchInitialData(token);
+      fetchDashboardData(token);
     }
-  }, [router, fetchInitialData]);
-
-  useEffect(() => {
-    const token = localStorage.getItem('authToken');
-    if (token) {
-      fetchLeads(token);
-    }
-  }, [fetchLeads]);
+  }, [router, fetchDashboardData]);
+  
   
   const handleUpdateStatus = async (leadId: string, newStatus: LeadStatus) => {
     const token = localStorage.getItem('authToken');
     if (!token) return;
+    
     const originalLeads = [...leads];
     setLeads(currentLeads =>
       currentLeads.map(lead =>
         lead.id === leadId ? { ...lead, status: newStatus } : lead
       )
     );
+
     try {
       const response = await fetch(`https://recupera-esprojeto.onrender.com/api/leads/${leadId}/status`, {
         method: 'PATCH',
@@ -129,9 +139,12 @@ export default function AgentDashboardPage() {
         },
         body: JSON.stringify({ status: newStatus }),
       });
+
       if (!response.ok) {
         throw new Error('Falha ao atualizar status na API.');
       }
+      // Após sucesso, atualiza tudo para refletir as novas métricas
+      fetchDashboardData(token);
     } catch (err: any) {
       alert(`Erro: ${err.message}. Revertendo a alteração.`);
       setLeads(originalLeads);
@@ -148,6 +161,10 @@ export default function AgentDashboardPage() {
     }, 2000);
   };
 
+  if (loading && !metrics) { // Mostra o carregamento inicial
+    return <div className="flex min-h-screen items-center justify-center bg-gray-900 text-white">Carregando painel...</div>;
+  }
+  
   if (error) {
     return <div className="flex min-h-screen items-center justify-center bg-gray-900 text-red-500">Erro: {error}</div>;
   }
@@ -155,8 +172,17 @@ export default function AgentDashboardPage() {
   return (
     <main className="min-h-screen bg-gray-900 text-white p-8">
       <div className="container mx-auto">
-        <h1 className="text-4xl font-bold mb-4">Painel do Atendente</h1>
-        <p className="text-gray-400 mb-8">Fila de Recuperação</p>
+        <h1 className="text-4xl font-bold mb-8">Painel do Atendente</h1>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
+            <MetricCard title="Aguardando Contato" value={metrics?.awaitingContact ?? 0} />
+            <MetricCard title="Em Recuperação" value={metrics?.inRecovery ?? 0} />
+            <MetricCard title="Vendas Recuperadas" value={metrics?.recoveredCount ?? 0} />
+            <MetricCard title="Valor Recuperado" value={metrics?.recoveredValue ?? 0} formatAsCurrency={true} />
+            <MetricCard title="Valor Pendente" value={metrics?.pendingValue ?? 0} formatAsCurrency={true} />
+        </div>
+
+        <h2 className="text-2xl font-semibold mb-4">Fila de Recuperação</h2>
 
         <div className="flex flex-wrap gap-4 items-center mb-8">
           <div>

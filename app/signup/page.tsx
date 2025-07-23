@@ -8,6 +8,7 @@ export default function SignupPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [platform, setPlatform] = useState('adoorei'); // Plataforma padrão
   const [error, setError] = useState('');
   const router = useRouter();
 
@@ -15,17 +16,17 @@ export default function SignupPage() {
     event.preventDefault();
     setError('');
 
-    if (!name || !email || !password) {
+    if (!name || !email || !password || !platform) {
       setError('Todos os campos são obrigatórios.');
       return;
     }
 
     try {
-      // 1. Tenta criar o novo usuário
+      // 1. Cria o novo usuário
       const signupResponse = await fetch('https://recupera-esprojeto.onrender.com/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password, role: 'seller' }), // Role 'seller' é fixa
+        body: JSON.stringify({ name, email, password, role: 'seller' }),
       });
 
       const signupData = await signupResponse.json();
@@ -33,7 +34,7 @@ export default function SignupPage() {
         throw new Error(signupData.error || 'Falha ao realizar o cadastro.');
       }
 
-      // 2. Se o cadastro deu certo, tenta fazer o login automaticamente
+      // 2. Faz o login para obter o token
       const loginResponse = await fetch('https://recupera-esprojeto.onrender.com/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -42,13 +43,24 @@ export default function SignupPage() {
       
       const loginData = await loginResponse.json();
       if (!loginResponse.ok) {
-        // Se o login falhar, redireciona para a página de login com uma mensagem
-        router.push('/?message=Cadastro realizado com sucesso. Por favor, faça o login.');
+        router.push('/?message=Cadastro realizado. Por favor, faça o login.');
         return;
       }
       
-      // 3. Se o login deu certo, salva o token e redireciona para o dashboard
-      localStorage.setItem('authToken', loginData.token);
+      const token = loginData.token;
+      localStorage.setItem('authToken', token);
+
+      // 3. Cria a primeira loja para o usuário
+      await fetch('https://recupera-esprojeto.onrender.com/api/stores', {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ name: "Minha Primeira Loja", platform: platform }),
+      });
+      
+      // 4. Redireciona para o dashboard
       router.push('/dashboard');
 
     } catch (err: any) {
@@ -63,24 +75,34 @@ export default function SignupPage() {
         <p className="text-center text-gray-400">Comece a recuperar suas vendas hoje.</p>
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-300">Nome</label>
-            <input id="name" name="name" type="text" required value={name} onChange={(e) => setName(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" />
+            <label htmlFor="name" className="block text-sm font-medium text-gray-300">Seu Nome</label>
+            <input id="name" type="text" required value={name} onChange={(e) => setName(e.target.value)}
+              className="mt-1 block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm" />
           </div>
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-300">Email</label>
-            <input id="email" name="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" />
+            <label htmlFor="email" className="block text-sm font-medium text-gray-300">Seu Melhor Email</label>
+            <input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+              className="mt-1 block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm" />
           </div>
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-300">Senha</label>
-            <input id="password" name="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" />
+            <label htmlFor="password" className="block text-sm font-medium text-gray-300">Crie uma Senha</label>
+            <input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
+              className="mt-1 block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm" />
+          </div>
+          <div>
+            <label htmlFor="platform" className="block text-sm font-medium text-gray-300">Qual checkout você utiliza?</label>
+            <select id="platform" value={platform} onChange={(e) => setPlatform(e.target.value)}
+              className="mt-1 block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+              <option value="adoorei">Adoorei</option>
+              <option value="hotmart">Hotmart</option>
+              <option value="kiwify">Kiwify</option>
+              <option value="generic">Outro / Genérico</option>
+            </select>
           </div>
           <div>
             <button type="submit"
-              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-              Cadastrar
+              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none">
+              Criar minha conta
             </button>
           </div>
         </form>
